@@ -1,0 +1,360 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Control ESP32 - Ubidots</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: Arial, sans-serif;
+  background: #101827;
+  color: white;
+  text-align: center;
+  padding: 25px 15px;
+}
+
+.container {
+  max-width: 420px;
+  margin: auto;
+  background: #1e293b;
+  padding: 25px;
+  border-radius: 20px;
+}
+
+h1 {
+  margin-bottom: 8px;
+}
+
+p {
+  color: #cbd5e1;
+}
+
+button {
+  width: 100%;
+  padding: 18px;
+  margin: 10px 0;
+  border: none;
+  border-radius: 12px;
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: .55;
+}
+
+.encender {
+  background: #16a34a;
+}
+
+.apagar {
+  background: #dc2626;
+}
+
+.voz {
+  background: #2563eb;
+}
+
+.detener {
+  background: #475569;
+}
+
+#estado {
+  margin-top: 18px;
+  padding: 15px;
+  background: #0f172a;
+  border-radius: 10px;
+  min-height: 50px;
+  overflow-wrap: anywhere;
+}
+
+#escuchado {
+  margin-top: 12px;
+  color: #93c5fd;
+  min-height: 24px;
+}
+
+.separador {
+  border-top: 1px solid #475569;
+  margin: 25px 0;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>CONTROL ESP32</h1>
+<p>Ubidots - Control inteligente de luz</p>
+
+<div class="separador"></div>
+
+<h3>CONTROL MANUAL</h3>
+
+<button class="encender" onclick="enviar(1)">
+🟢 ENCENDER LUZ
+</button>
+
+<button class="apagar" onclick="enviar(0)">
+🔴 APAGAR LUZ
+</button>
+
+<div class="separador"></div>
+
+<h3>CONTROL POR VOZ</h3>
+
+<button class="voz" id="btnVoz" onclick="iniciarVoz()">
+🎤 HABLAR
+</button>
+
+<button class="detener" onclick="detenerVoz()">
+⏹ DETENER MICRÓFONO
+</button>
+
+<div id="escuchado">
+Di: "Prende la luz" o "Apaga la luz"
+</div>
+
+<div id="estado">
+Sistema preparado
+</div>
+
+</div>
+
+<script>
+
+// ========================================
+// CONFIGURACION UBIDOTS
+// ========================================
+
+const TOKEN = "BBUS-saHax4mELqpEk0uUBZIvySYIfWgoTP";
+
+const DEVICE = "luz";
+const VARIABLE = "boton";
+
+const URL = `https://industrial.api.ubidots.com/api/v1.6/devices/${DEVICE}/${VARIABLE}/values`;
+
+// ========================================
+// ENVIAR DATOS A UBIDOTS
+// ========================================
+
+let enviando = false;
+
+async function enviar(valor) {
+
+  if (enviando) return;
+
+  enviando = true;
+
+  const estado = document.getElementById("estado");
+
+  estado.innerHTML = "Enviando comando a Ubidots...";
+
+  try {
+
+    const respuesta = await fetch(URL, {
+
+      method: "POST",
+
+      headers: {
+        "X-Auth-Token": TOKEN,
+        "Content-Type": "application/json"
+      },
+
+      body: JSON.stringify({
+        value: valor
+      })
+
+    });
+
+    if (!respuesta.ok) {
+      throw new Error("HTTP " + respuesta.status);
+    }
+
+    if (valor === 1) {
+
+      estado.innerHTML = "🟢 LUZ ENCENDIDA - Comando enviado";
+
+    } else {
+
+      estado.innerHTML = "🔴 LUZ APAGADA - Comando enviado";
+
+    }
+
+  } catch (error) {
+
+    estado.innerHTML = "❌ Error: " + error.message;
+
+  } finally {
+
+    enviando = false;
+
+  }
+
+}
+
+// ========================================
+// RECONOCIMIENTO DE VOZ
+// ========================================
+
+const Reconocimiento =
+  window.SpeechRecognition ||
+  window.webkitSpeechRecognition;
+
+let reconocimiento = null;
+let escuchando = false;
+
+if (Reconocimiento) {
+
+  reconocimiento = new Reconocimiento();
+
+  reconocimiento.lang = "es-EC";
+  reconocimiento.continuous = true;
+  reconocimiento.interimResults = false;
+
+  reconocimiento.onstart = function() {
+
+    escuchando = true;
+
+    document.getElementById("btnVoz").innerHTML =
+      "🎤 ESCUCHANDO...";
+
+    document.getElementById("escuchado").innerHTML =
+      "Puedes dar una orden de voz";
+
+  };
+
+  reconocimiento.onresult = function(event) {
+
+    const ultimo =
+      event.results[event.results.length - 1];
+
+    if (!ultimo.isFinal) return;
+
+    const texto = ultimo[0].transcript
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+
+    document.getElementById("escuchado").innerHTML =
+      "Escuché: " + texto;
+
+    console.log("Comando:", texto);
+
+    // ENCENDER
+
+    if (
+      texto.includes("prende la luz") ||
+      texto.includes("enciende la luz") ||
+      texto.includes("encender la luz") ||
+      texto.includes("prender la luz") ||
+      texto.includes("enciende luz")
+    ) {
+
+      enviar(1);
+
+    }
+
+    // APAGAR
+
+    else if (
+      texto.includes("apaga la luz") ||
+      texto.includes("apagar la luz") ||
+      texto.includes("desactiva la luz") ||
+      texto.includes("apaga luz")
+    ) {
+
+      enviar(0);
+
+    }
+
+    else {
+
+      document.getElementById("estado").innerHTML =
+        "No reconocí el comando. Intenta otra vez.";
+
+    }
+
+  };
+
+  reconocimiento.onerror = function(event) {
+
+    document.getElementById("estado").innerHTML =
+      "Error del micrófono: " + event.error;
+
+  };
+
+  reconocimiento.onend = function() {
+
+    escuchando = false;
+
+    document.getElementById("btnVoz").innerHTML =
+      "🎤 HABLAR";
+
+  };
+
+}
+
+// ========================================
+// INICIAR MICROFONO
+// ========================================
+
+function iniciarVoz() {
+
+  if (!reconocimiento) {
+
+    document.getElementById("estado").innerHTML =
+      "Tu navegador no admite reconocimiento de voz.";
+
+    return;
+
+  }
+
+  if (!escuchando) {
+
+    try {
+
+      reconocimiento.start();
+
+    } catch(error) {
+
+      document.getElementById("estado").innerHTML =
+        "No se pudo iniciar el micrófono.";
+
+    }
+
+  }
+
+}
+
+// ========================================
+// DETENER MICROFONO
+// ========================================
+
+function detenerVoz() {
+
+  if (reconocimiento && escuchando) {
+
+    reconocimiento.stop();
+
+  }
+
+  document.getElementById("escuchado").innerHTML =
+    "Micrófono detenido";
+
+}
+
+</script>
+
+</body>
+</html>
